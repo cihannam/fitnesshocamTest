@@ -1,0 +1,216 @@
+ public JsonResult Register(string EMail, string Name, string Phone, string PassWord)
+        {
+            MailAddress testAddress;
+            int i;
+            UsersTableAdapter usersAdapter;
+            FitnessHocamDataSet.UsersDataTable usersTable;
+            FitnessHocamDataSet.UsersRow userRow;
+            Regex regExp;
+            AdministratorsTableAdapter administratorsAdapter;
+            string userId, searchTerm, mailBody, surName, name, coachEMail, status;
+            CoachDistributionTableAdapter coachDistributionAdapter;
+            FitnessHocamDataSet.CoachDistributionDataTable coachDistributionTable;
+            FitnessHocamDataSet.CoachDistributionRow coachDistributionRow;
+            TrainerDistributionTableAdapter trainerDistributionAdapter;
+            FitnessHocamDataSet.TrainerDistributionDataTable trainerDistributionTable;
+            FitnessHocamDataSet.TrainerDistributionRow trainerDistributionRow;
+            byte? lastAssignmentOrder;
+            short coachId, trainerId;
+            StringWriter stringWriter;
+            TextWriter originalWriter;
+            FitnessHocamDataSet.AdministratorsDataTable administratorsTable;
+            FitnessHocamDataSet.AdministratorsRow coachRow, trainerRow;
+            MailMessage sysMail;
+            SmtpClient mailClient;
+            NetworkCredential mailUser;
+            string[] names;
+            StringResult stringResult;
+            bool sendMail;
+
+            Name = Name.Trim();
+            if (Name.Length < 2)
+            {
+                return null;
+            }
+            if (Name.Length > 50)
+            {
+                return null;
+            }
+            name = Name;
+            EMail = EMail.Trim();
+            if (EMail.Length < 3)
+            {
+                return null;
+            }
+            if (EMail.Length > 50)
+            {
+                return null;
+            }
+            try
+            {
+                testAddress = new MailAddress(EMail);
+                if (testAddress.Address != EMail)
+                {
+                    return null;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+            PassWord = PassWord.Trim();
+            if (PassWord.Length > 50)
+            {
+                return null;
+            }
+            surName = "";
+            names = Name.Split(' ');
+            if (names.Length > 1)
+            {
+                surName = names[names.Length - 1];
+                name = "";
+                for (i = 0; i < names.Length - 1; i++)
+                {
+                    name = name + names[i] + " ";
+                }
+                name = name.Trim();
+            }
+            Phone = Phone.Trim().Replace(" ", "").Replace("-", "").Replace("(", "").Replace(")", "");
+            if (Phone.Length < 10)
+            {
+                return null;
+            }
+            if (Phone.Length > 19)
+            {
+                return null;
+            }
+            regExp = new Regex("[^0-9+]");
+            if (regExp.IsMatch(Phone) == true)
+            {
+                return null;
+            }
+            stringResult = new StringResult();
+            stringResult.Error = null;
+            usersAdapter = new UsersTableAdapter();
+            usersTable = new FitnessHocamDataSet.UsersDataTable();
+            sendMail = true;
+            status = "Aday";
+            try
+            {
+                usersAdapter.FillByEMail(usersTable, EMail);
+                if (usersTable.Rows.Count > 0)
+                {
+                    userRow = (FitnessHocamDataSet.UsersRow)usersTable.Rows[0];
+                    userId = userRow.Id.ToString();
+                    coachId = userRow.Coach;
+                    trainerId = userRow.Trainer;
+                    switch (userRow.Status)
+                    {
+                        case 1:
+                            userRow.Status = 3;
+                            userRow.PassWord = PassWord;
+                            userRow.RegisteredOn = DateTime.Today;
+                            userRow.StartOn = userRow.RegisteredOn;
+                            userRow.EndOn = userRow.StartOn.AddDays(14);
+                            userRow.Duration = 0;
+                            usersAdapter.Update(userRow);
+                            break;
+                        case 2:
+                            userRow.Status = 4;
+                            userRow.PassWord = PassWord;
+                            userRow.RegisteredOn = DateTime.Today;
+                            userRow.StartOn = userRow.RegisteredOn;
+                            userRow.EndOn = userRow.StartOn.AddMonths(userRow.Duration);
+                            usersAdapter.Update(userRow);
+                            status = "Üye";
+                            break;
+                        default:
+                            sendMail = false;
+                            break;
+                    }
+                }
+                else
+                {
+                    coachDistributionAdapter = new CoachDistributionTableAdapter();
+                    lastAssignmentOrder = coachDistributionAdapter.LastAssignmentOrder();
+                    if (lastAssignmentOrder == null)
+                    {
+                        lastAssignmentOrder = 0;
+                    }
+                    if (lastAssignmentOrder == coachDistributionAdapter.MaximumOrder())
+                    {
+                        lastAssignmentOrder = 0;
+                    }
+                    lastAssignmentOrder++;
+                    coachDistributionTable = new FitnessHocamDataSet.CoachDistributionDataTable();
+                    coachDistributionAdapter.FillByNextCoach(coachDistributionTable, lastAssignmentOrder.Value);
+                    coachDistributionRow = (FitnessHocamDataSet.CoachDistributionRow)coachDistributionTable.Rows[0];
+                    coachId = coachDistributionRow.Coach;
+                    trainerDistributionAdapter = new TrainerDistributionTableAdapter();
+                    lastAssignmentOrder = trainerDistributionAdapter.LastAssignmentOrder();
+                    if (lastAssignmentOrder == null)
+                    {
+                        lastAssignmentOrder = 0;
+                    }
+                    if (lastAssignmentOrder == trainerDistributionAdapter.MaximumOrder())
+                    {
+                        lastAssignmentOrder = 0;
+                    }
+                    lastAssignmentOrder++;
+                    trainerDistributionTable = new FitnessHocamDataSet.TrainerDistributionDataTable();
+                    trainerDistributionAdapter.FillByNextTrainer(trainerDistributionTable, lastAssignmentOrder.Value);
+                    trainerDistributionRow = (FitnessHocamDataSet.TrainerDistributionRow)trainerDistributionTable.Rows[0];
+                    trainerId = trainerDistributionRow.Trainer;
+                    searchTerm = name.ToLower().Replace('ç', 'c').Replace('Ç', 'c').Replace('ğ', 'g').Replace('Ğ', 'g').Replace('ı', 'i').Replace('I', 'i').Replace('İ', 'i').Replace('ö', 'o').Replace('Ö', 'o').Replace('ş', 's').Replace('Ş', 's').Replace('ü', 'u').Replace('Ü', 'u') + surName.ToLower().Replace('ç', 'c').Replace('Ç', 'c').Replace('ğ', 'g').Replace('Ğ', 'g').Replace('ı', 'i').Replace('I', 'i').Replace('İ', 'i').Replace('ö', 'o').Replace('Ö', 'o').Replace('ş', 's').Replace('Ş', 's').Replace('ü', 'u').Replace('Ü', 'u');
+                    usersAdapter.Insert(name, surName, EMail, Phone, null, null, null, null, PassWord, null, null, null, null, null, null, null, null, coachId, null, DateTime.Today, null, 3, 0, null, null, null, DateTime.Today, DateTime.Today.AddDays(14), null, null, searchTerm, trainerId, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                    userId = usersAdapter.UserId(EMail).Value.ToString();
+                    coachDistributionAdapter.ClearLastAssignment();
+                    coachDistributionAdapter.Assign(coachDistributionRow.Order);
+                    trainerDistributionAdapter.ClearLastAssignment();
+                    trainerDistributionAdapter.Assign(trainerDistributionRow.Order);
+                }
+                if (sendMail == true)
+                {
+                    stringWriter = new StringWriter();
+                    originalWriter = this.ControllerContext.RequestContext.HttpContext.Response.Output;
+                    this.ControllerContext.RequestContext.HttpContext.Response.Output = stringWriter;
+                    ViewData["name"] = name + " " + surName;
+                    ViewData["eMail"] = EMail;
+                    ViewData["phone"] = Phone;
+                    administratorsAdapter = new AdministratorsTableAdapter();
+                    administratorsTable = new FitnessHocamDataSet.AdministratorsDataTable();
+                    administratorsAdapter.FillById(administratorsTable, coachId);
+                    coachRow = (FitnessHocamDataSet.AdministratorsRow)administratorsTable.Rows[0];
+                    ViewData["coach"] = coachRow.Name.Trim() + " " + coachRow.SurName.Trim();
+                    coachEMail = coachRow.EMail.Trim();
+                    administratorsAdapter.FillById(administratorsTable, trainerId);
+                    trainerRow = (FitnessHocamDataSet.AdministratorsRow)administratorsTable.Rows[0];
+                    ViewData["trainer"] = trainerRow.Name.Trim() + " " + trainerRow.SurName.Trim();
+                    PartialView("MailBody").ExecuteResult(this.ControllerContext);
+                    stringWriter.Flush();
+                    mailBody = stringWriter.ToString().Replace("\r\n", "");
+                    this.ControllerContext.RequestContext.HttpContext.Response.Output = originalWriter;
+                    sysMail = new MailMessage("info@fitness-hocam.com", "info@fitness-hocam.com," + coachEMail + "," + trainerRow.EMail.Trim(), status + " kayıt", mailBody);
+                    sysMail.IsBodyHtml = true;
+                    mailClient = new SmtpClient();
+                    mailClient.Host = "mail.fitness-hocam.com";
+                    mailClient.Port = 25;
+                    mailUser = new NetworkCredential();
+                    mailUser.UserName = "info@fitness-hocam.com";
+                    mailUser.Password = "iFH1!";
+                    mailClient.Credentials = mailUser;
+                    try
+                    {
+                        mailClient.Send(sysMail);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                stringResult.Error = ex.Message;
+            }
+            return Json(stringResult);
+        }
